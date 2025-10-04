@@ -1,6 +1,5 @@
-// app/api/discord/interactions/route.js
-export const runtime = "edge";           // <-- ensures raw body handling is clean
-export const dynamic = "force-dynamic";  // (avoid caching)
+export const runtime = "edge";           // Edge runtime handles raw body best
+export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { verifyKey } from "discord-interactions";
@@ -12,26 +11,34 @@ const EPHEMERAL = 1 << 6; // 64
 
 const ok = (data) => NextResponse.json(data);
 
-function verifyRequest(req, rawBody) {
+function isValidSignature(req, rawBody) {
   const sig = req.headers.get("X-Signature-Ed25519");
   const ts  = req.headers.get("X-Signature-Timestamp");
   if (!sig || !ts || !PUBLIC_KEY) return false;
   try {
     return verifyKey(rawBody, sig, ts, PUBLIC_KEY);
-  } catch {
+  } catch (e) {
     return false;
   }
 }
 
 export async function POST(req) {
-  // IMPORTANT: read raw body for verification
+  // Read raw text before ANY parsing
   const raw = await req.text();
 
-  // Verify signature first
-  const valid = verifyRequest(req, raw);
+  const valid = isValidSignature(req, raw);
   if (!valid) {
-    // Log a tiny hint without leaking secrets
-    console.log("Discord verify failed. Have PUBLIC_KEY?", !!PUBLIC_KEY);
+    // Minimal diagnostics without leaking secrets
+    console.log(
+      "Discord verify failed",
+      {
+        hasPK: !!PUBLIC_KEY,
+        pkLen: (PUBLIC_KEY || "").length,
+        hasSig: !!req.headers.get("X-Signature-Ed25519"),
+        hasTs:  !!req.headers.get("X-Signature-Timestamp"),
+        rawLen: raw.length,
+      }
+    );
     return new NextResponse("Bad signature", { status: 401 });
   }
 
@@ -42,7 +49,7 @@ export async function POST(req) {
     return ok({ type: 1 });
   }
 
-  // Channel gate (optional)
+  // Optional: channel gate
   if (ALLOWED_CHANNEL && body.channel_id !== ALLOWED_CHANNEL) {
     return ok({
       type: 4,
