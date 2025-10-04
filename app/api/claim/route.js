@@ -43,8 +43,9 @@ export async function POST(req) {
     // Send a simple receipt back to the UI
     return NextResponse.json({
       ok: true,
+      id: data?.id,
       wallet: wallet.trim(),
-      tier: data?.tier || "alpha"
+      tier: data?.tier || "Early Access"
     });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
