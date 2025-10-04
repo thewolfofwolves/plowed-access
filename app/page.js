@@ -123,9 +123,6 @@ export default function Home() {
               Wallet <code>{short(receipt.wallet)}</code> successfully submitted
               {receipt.tier ? <> for <strong>{receipt.tier}</strong></> : null}.
             </p>
-            <p style={{ opacity: 0.8, marginBottom: 0 }}>
-              Keep this page as your receipt.
-            </p>
           </div>
         )}
       </Card>
