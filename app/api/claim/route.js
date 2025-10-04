@@ -31,7 +31,7 @@ export async function POST(req) {
     const { data, error } = await supa.rpc("claim_code", {
       p_code: code.trim(),
       p_wallet_address: wallet.trim(),
-      p_tier: "alpha",            // tier is read from the code in the DB function
+      p_tier: "alpha",          // tier is read from the code in the DB function
       p_ip_hash: ipHash,
       p_user_agent: ua
     });
@@ -40,12 +40,13 @@ export async function POST(req) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Send a simple receipt back to the UI
+    // Return receipt including referral code
     return NextResponse.json({
       ok: true,
       id: data?.id,
       wallet: wallet.trim(),
-      tier: data?.tier || "Early Access"
+      tier: data?.tier || "Early Access",
+      referral_code: data?.referral_code || null
     });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
