@@ -3,8 +3,12 @@ import { useState } from "react";
 
 export default function Home(){
   const [step,setStep]=useState("code");
-  const [code,setCode]=useState(""); const [tier,setTier]=useState();
+  const [code,setCode]=useState("");
+  const [tier,setTier]=useState();
   const [wallet,setWallet]=useState("");
+  const [receipt,setReceipt]=useState({ wallet:"", tier:"" });
+
+  const short = (a="") => a ? `${a.slice(0,4)}…${a.slice(-4)}` : "";
 
   async function checkCode(e){
     e.preventDefault();
@@ -12,11 +16,13 @@ export default function Home(){
     const j=await r.json(); if(!r.ok) return alert(j.error||"Invalid code");
     setTier(j.tier); setStep("wallet");
   }
+
   async function claim(e){
     e.preventDefault();
     const r=await fetch("/api/claim",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,wallet})});
     const j=await r.json(); if(!r.ok) return alert(j.error||"Claim failed");
-    if(j.discord_url) window.location.href=j.discord_url; else setStep("done");
+    setReceipt({ wallet: j.wallet, tier: j.tier });
+    setStep("done");
   }
 
   return (
@@ -39,7 +45,13 @@ export default function Home(){
         <button type="submit" style={{padding:"10px 16px",borderRadius:8}}>Save wallet</button>
       </form>)}
 
-      {step==="done"&&(<div><h2>All set</h2><p>Your wallet is saved.</p></div>)}
+      {step==="done"&&(
+        <div>
+          <h2>All set</h2>
+          <p>Wallet <code>{short(receipt.wallet)}</code> successfully submitted{receipt.tier ? <> for <strong>{receipt.tier}</strong></> : null}.</p>
+          <p style={{opacity:.8}}>Keep this page as your receipt.</p>
+        </div>
+      )}
     </main>
   );
 }
