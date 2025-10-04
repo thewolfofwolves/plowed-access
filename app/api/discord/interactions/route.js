@@ -26,11 +26,9 @@ export async function POST(req) {
   const body = JSON.parse(raw);
 
   // PING
-  if (body.type === 1) {
-    return NextResponse.json({ type: 1 });
-  }
+  if (body.type === 1) return NextResponse.json({ type: 1 });
 
-  // Channel gate (optional but recommended)
+  // Channel gate (optional)
   if (ALLOWED_CHANNEL && body.channel_id !== ALLOWED_CHANNEL) {
     return NextResponse.json({
       type: 4,
@@ -41,7 +39,7 @@ export async function POST(req) {
   const name = body.data?.name;
   const discordId = body.member?.user?.id || body.user?.id;
 
-  if (name === "referral") {
+  if (name === "claim") {
     if (!discordId) {
       return NextResponse.json({
         type: 4,
@@ -49,8 +47,8 @@ export async function POST(req) {
       });
     }
 
-    // Ask Postgres to assign or fetch an existing code atomically
     const supa = supaAdmin();
+    // allocate or return existing code atomically
     const { data, error } = await supa.rpc("assign_discord_code", { p_discord_id: discordId });
 
     if (error) {
@@ -67,13 +65,9 @@ export async function POST(req) {
       });
     }
 
-    // Success
     return NextResponse.json({
       type: 4,
-      data: {
-        content: `Your referral code: **${data}**`,
-        flags: EPHEMERAL
-      }
+      data: { content: `Your code: **${data}**`, flags: EPHEMERAL }
     });
   }
 
