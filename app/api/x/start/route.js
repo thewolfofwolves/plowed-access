@@ -30,7 +30,7 @@ export async function GET(req){
   auth.searchParams.set("response_type", "code");
   auth.searchParams.set("client_id", process.env.TW_CLIENT_ID);
   auth.searchParams.set("redirect_uri", `${process.env.APP_BASE_URL}/api/x/callback`);
-  auth.searchParams.set("scope", "users.read");
+  auth.searchParams.set("scope", "tweet.read users.read offline.access");
   auth.searchParams.set("state", data.state);
   auth.searchParams.set("code_challenge", challenge);
   auth.searchParams.set("code_challenge_method", "S256");
