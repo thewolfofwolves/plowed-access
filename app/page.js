@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 export default function Home() {
-  const [step, setStep] = useState("code");       // "code" | "wallet" | "done"
+  const [step, setStep] = useState("code"); // "code" | "wallet" | "done"
   const [code, setCode] = useState("");
   const [tier, setTier] = useState();
   const [wallet, setWallet] = useState("");
@@ -39,13 +39,16 @@ export default function Home() {
   const Card = ({ children }) => (
     <div
       style={{
-        background: "rgba(6, 10, 7, 0.68)",
+        maxWidth: 880,
+        margin: "48px auto",
+        padding: "28px 28px",
+        background: "rgba(6, 10, 7, 0.72)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 14,
-        padding: 22,
-        boxShadow: "0 20px 50px rgba(0,0,0,0.35)"
+        border: "1px solid rgba(255,255,255,0.10)",
+        borderRadius: 16,
+        boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
+        boxSizing: "border-box"
       }}
     >
       {children}
@@ -55,9 +58,10 @@ export default function Home() {
   const inputStyle = {
     display: "block",
     width: "100%",
-    padding: "12px 14px",
-    margin: "8px 0 14px",
-    borderRadius: 10,
+    boxSizing: "border-box",
+    padding: "14px 16px",
+    margin: "10px 0 16px",
+    borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
     outline: "none",
     background: "rgba(255,255,255,0.06)",
@@ -65,24 +69,22 @@ export default function Home() {
   };
 
   const buttonStyle = {
-    padding: "10px 16px",
-    borderRadius: 10,
+    padding: "12px 18px",
+    borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(87, 214, 127, 0.2)",
+    background: "rgba(87, 214, 127, 0.22)",
     color: "#eaf8eb",
     cursor: "pointer"
   };
 
   return (
     <main>
-      <div style={{ marginBottom: 18 }}>
-        <h1 style={{ fontSize: 36, margin: "0 0 8px" }}>Claim your Early Access</h1>
-        <p style={{ opacity: 0.9, margin: 0 }}>
+      <Card>
+        <h1 style={{ fontSize: 40, margin: "0 0 6px" }}>Claim your Early Access</h1>
+        <p style={{ opacity: 0.9, margin: "0 0 20px" }}>
           Enter your access code, then paste your Solana wallet to register for Early Access.
         </p>
-      </div>
 
-      <Card>
         {step === "code" && (
           <form onSubmit={checkCode}>
             <label>Access code</label>
