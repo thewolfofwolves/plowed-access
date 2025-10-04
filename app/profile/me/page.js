@@ -7,6 +7,7 @@ export default function Me() {
   const [formWallet, setFormWallet] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [copyMsg, setCopyMsg] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -20,7 +21,7 @@ export default function Me() {
   }, []);
 
   const shell = {
-    maxWidth: 760,              // << tighter, consistent content width
+    maxWidth: 760,
     margin: "48px auto",
     padding: 28,
     background: "rgba(6,10,7,0.72)",
@@ -73,6 +74,17 @@ export default function Me() {
     window.location.href = "/profile"; // back to "Sign in with Twitter"
   }
 
+  async function copyReferral() {
+    if (!rec?.referral_code) return;
+    try {
+      await navigator.clipboard.writeText(rec.referral_code);
+      setCopyMsg("Copied ✓");
+    } catch {
+      setCopyMsg("Copy failed");
+    }
+    setTimeout(() => setCopyMsg(""), 1500);
+  }
+
   return (
     <main>
       <div style={shell}>
@@ -87,6 +99,16 @@ export default function Me() {
           <>
             <p><strong>Wallet:</strong> {rec.wallet_address}</p>
             <p><strong>Tier:</strong> {rec.tier}</p>
+
+            {rec.referral_code && (
+              <p style={{display:"flex",alignItems:"center",gap:10}}>
+                <span><strong>Referral code:</strong> {rec.referral_code}</span>
+                <button type="button" onClick={copyReferral} style={{...button, padding:"6px 10px"}}>
+                  Copy
+                </button>
+                {copyMsg && <span style={{ opacity: 0.9 }}>{copyMsg}</span>}
+              </p>
+            )}
 
             {rec.x_username && (
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
