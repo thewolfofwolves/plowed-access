@@ -1,36 +1,41 @@
 import { NextResponse } from "next/server";
-import * as nacl from "tweetnacl";
+import { verifyKey } from "discord-interactions";
 import { supaAdmin } from "@/lib/supa";
 
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
 const ALLOWED_CHANNEL = process.env.DISCORD_ALLOWED_CHANNEL_ID;
 const EPHEMERAL = 1 << 6; // 64
 
-function verifySignature(req, rawBody) {
+function ok(json) { return NextResponse.json(json); }
+
+function verifyRequest(req, rawBody) {
   const sig = req.headers.get("X-Signature-Ed25519");
   const ts  = req.headers.get("X-Signature-Timestamp");
   if (!sig || !ts) return false;
-  return nacl.sign.detached.verify(
-    Buffer.from(ts + rawBody),
-    Buffer.from(sig, "hex"),
-    Buffer.from(PUBLIC_KEY, "hex")
-  );
+  try {
+    // verifyKey expects raw string body
+    return verifyKey(rawBody, sig, ts, PUBLIC_KEY);
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req) {
+  // IMPORTANT: use raw text for signature verification
   const raw = await req.text();
-  if (!verifySignature(req, raw)) {
+
+  if (!verifyRequest(req, raw)) {
     return new NextResponse("Bad signature", { status: 401 });
   }
 
   const body = JSON.parse(raw);
 
-  // PING
-  if (body.type === 1) return NextResponse.json({ type: 1 });
+  // PING -> PONG
+  if (body.type === 1) return ok({ type: 1 });
 
-  // Channel gate (optional)
+  // Optionally restrict to one channel
   if (ALLOWED_CHANNEL && body.channel_id !== ALLOWED_CHANNEL) {
-    return NextResponse.json({
+    return ok({
       type: 4,
       data: { content: "Use this command in the designated channel.", flags: EPHEMERAL }
     });
@@ -41,39 +46,24 @@ export async function POST(req) {
 
   if (name === "claim") {
     if (!discordId) {
-      return NextResponse.json({
-        type: 4,
-        data: { content: "Could not read your Discord ID.", flags: EPHEMERAL }
-      });
+      return ok({ type: 4, data: { content: "Could not read your Discord ID.", flags: EPHEMERAL } });
     }
 
     const supa = supaAdmin();
-    // allocate or return existing code atomically
     const { data, error } = await supa.rpc("assign_discord_code", { p_discord_id: discordId });
 
     if (error) {
-      return NextResponse.json({
-        type: 4,
-        data: { content: `Database error: ${error.message}`, flags: EPHEMERAL }
-      });
+      return ok({ type: 4, data: { content: `Database error: ${error.message}`, flags: EPHEMERAL } });
     }
-
     if (!data) {
-      return NextResponse.json({
-        type: 4,
-        data: { content: "No codes left in the pool. Please contact an admin.", flags: EPHEMERAL }
-      });
+      return ok({ type: 4, data: { content: "No codes left in the pool. Please contact an admin.", flags: EPHEMERAL } });
     }
 
-    return NextResponse.json({
+    return ok({
       type: 4,
       data: { content: `Your code: **${data}**`, flags: EPHEMERAL }
     });
   }
 
-  // Unknown command
-  return NextResponse.json({
-    type: 4,
-    data: { content: "Unknown command.", flags: EPHEMERAL }
-  });
+  return ok({ type: 4, data: { content: "Unknown command.", flags: EPHEMERAL } });
 }
