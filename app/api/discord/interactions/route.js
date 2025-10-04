@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import nacl from "tweetnacl";
+import * as nacl from "tweetnacl";
 import { supaAdmin } from "@/lib/supa";
 
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
