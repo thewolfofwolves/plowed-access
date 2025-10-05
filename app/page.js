@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   // steps: "code" -> "wallet" -> "link-x"
@@ -16,6 +16,21 @@ export default function Home() {
   const [checkingCode, setCheckingCode] = useState(false);
   const [savingWallet, setSavingWallet] = useState(false);
   const [resuming, setResuming] = useState(false);
+
+  // track and restore focus to the field the user was in
+  const codeRef = useRef(null);
+  const walletRef = useRef(null);
+  const lastFocusedRef = useRef(null); // "code" | "wallet" | null
+
+  // If focus drops to <body> after a render, put it back to the last focused field
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      const targetKey = lastFocusedRef.current;
+      if (targetKey === "code" && codeRef.current) codeRef.current.focus();
+      if (targetKey === "wallet" && walletRef.current) walletRef.current.focus();
+    }
+  });
 
   // tiny inline spinner (no layout changes)
   const Spinner = ({ size = 14, stroke = 2 }) => {
@@ -61,6 +76,10 @@ export default function Home() {
       }
       setTier(j.tier || "Early Access");
       setStep("wallet");
+      // when we switch to wallet step, move focus into wallet field
+      lastFocusedRef.current = "wallet";
+      // delay to next frame to ensure DOM exists
+      requestAnimationFrame(() => walletRef.current && walletRef.current.focus());
     } catch {
       alert("Network error. Please try again.");
     } finally {
@@ -179,6 +198,8 @@ export default function Home() {
             <form onSubmit={checkCode}>
               <label>Access code</label>
               <input
+                ref={codeRef}
+                onFocus={() => (lastFocusedRef.current = "code")}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
@@ -200,6 +221,8 @@ export default function Home() {
               </p>
               <form onSubmit={resumeLinking} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12 }}>
                 <input
+                  ref={walletRef}
+                  onFocus={() => (lastFocusedRef.current = "wallet")}
                   value={wallet}
                   onChange={(e) => setWallet(e.target.value)}
                   required
@@ -226,6 +249,8 @@ export default function Home() {
             </p>
             <label>Solana wallet address</label>
             <input
+              ref={walletRef}
+              onFocus={() => (lastFocusedRef.current = "wallet")}
               value={wallet}
               onChange={(e) => setWallet(e.target.value)}
               required
