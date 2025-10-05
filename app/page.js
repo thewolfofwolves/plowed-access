@@ -1,5 +1,61 @@
 // app/page.js
 "use client";
+import { useEffect, useRef, useState } from "react";
+
+/* --- tiny spinner + global busy flag --- */
+function Spinner({ size = 14, stroke = 2 }) {
+  const s = `${size}px`;
+  const r = (size - stroke) / 2;
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${size} ${size}`} aria-label="Loading">
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round"
+              strokeDasharray={`${Math.PI*r*1.2} ${Math.PI*r*2}`}
+              style={{transformOrigin:"50% 50%", animation:"spin .8s linear infinite"}}/>
+      <style jsx>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </svg>
+  );
+}
+
+function useGlobalBusy() {
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(0);
+  const restore = useRef(null);
+
+  useEffect(() => {
+    if (restore.current) return;
+    const orig = window.fetch.bind(window);
+    restore.current = () => (window.fetch = orig);
+
+    window.fetch = async (...args) => {
+      inFlight.current += 1;
+      setBusy(true);
+      try { return await orig(...args); }
+      finally {
+        inFlight.current -= 1;
+        if (inFlight.current <= 0) setBusy(false);
+      }
+    };
+    return () => restore.current && restore.current();
+  }, []);
+  return busy;
+}
+
+function BusyPill({ show }) {
+  if (!show) return null;
+  return (
+    <div aria-hidden="true" style={{ position:"fixed", top:12, right:12, zIndex:9999 }}>
+      <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"#000",
+                    color:"#fff", borderRadius:9999, padding:"6px 10px",
+                    boxShadow:"0 8px 20px rgba(0,0,0,.25)" }}>
+        <Spinner />
+        <span style={{ fontSize:12 }}>Loading…</span>
+      </div>
+    </div>
+  );
+}
+
+"use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /* ============== Tiny spinner + non-intrusive busy indicator ============== */
