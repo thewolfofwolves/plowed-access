@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   // steps: "code" -> "wallet" -> "link-x"
@@ -16,6 +16,15 @@ export default function Home() {
   const [checkingCode, setCheckingCode] = useState(false);
   const [savingWallet, setSavingWallet] = useState(false);
   const [resuming, setResuming] = useState(false);
+
+  // keep focus stable on the code input
+  const codeInputRef = useRef(null);
+  useEffect(() => {
+    if (step !== "code") return;
+    // if focus drifts away during typing, put it back
+    const el = codeInputRef.current;
+    if (el && document.activeElement !== el) el.focus();
+  }, [code, step]);
 
   // tiny inline spinner (no layout changes)
   const Spinner = ({ size = 14, stroke = 2 }) => {
@@ -93,7 +102,7 @@ export default function Home() {
     }
   }
 
-  // NEW: resume flow for used codes (does not change original steps)
+  // resume flow (code + wallet must match the original claim)
   async function resumeLinking(e) {
     e.preventDefault();
     if (resuming) return;
@@ -109,7 +118,6 @@ export default function Home() {
         alert(j.error || "Could not resume. Check code and wallet are the same as your original claim.");
         return;
       }
-      // Jump straight into your existing OAuth
       window.location.href = j.url; // /api/x/start?mode=link&claim=...
     } catch {
       alert("Network error. Please try again.");
@@ -122,7 +130,7 @@ export default function Home() {
   const Card = ({ children }) => (
     <div
       style={{
-        maxWidth: 760,               // consistent content width
+        maxWidth: 760,
         margin: "48px auto",
         padding: 28,
         background: "rgba(6,10,7,0.72)",
@@ -181,11 +189,15 @@ export default function Home() {
             <form onSubmit={checkCode}>
               <label>Access code</label>
               <input
+                ref={codeInputRef}
+                autoFocus
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
                 style={inputStyle}
                 placeholder="Enter your code"
+                autoComplete="one-time-code"
+                inputMode="text"
               />
               <button type="submit" style={checkingCode ? buttonDisabledStyle : buttonStyle} disabled={checkingCode}>
                 {checkingCode && <Spinner />}
@@ -205,6 +217,7 @@ export default function Home() {
                   required
                   style={inputStyle}
                   placeholder="Enter the same wallet you used"
+                  autoComplete="off"
                 />
                 <button type="submit" style={resuming ? buttonDisabledStyle : buttonStyle} disabled={resuming}>
                   {resuming && <Spinner />}
@@ -230,6 +243,7 @@ export default function Home() {
               required
               style={inputStyle}
               placeholder="e.g. 7p9…Xk"
+              autoComplete="off"
             />
             <button type="submit" style={savingWallet ? buttonDisabledStyle : buttonStyle} disabled={savingWallet}>
               {savingWallet && <Spinner />}
