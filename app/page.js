@@ -2,7 +2,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-/* ============== Tiny spinner + global busy overlay ============== */
+/* ============== Tiny spinner + non-intrusive busy indicator ============== */
 
 function Spinner({ size = 18, stroke = 2 }) {
   const s = `${size}px`;
@@ -26,7 +26,7 @@ function Spinner({ size = 18, stroke = 2 }) {
   );
 }
 
-/** Monkey-patch window.fetch on this page and expose a busy flag. */
+/** Patches window.fetch on this page to expose a busy flag. */
 function useGlobalBusy() {
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(0);
@@ -41,35 +41,31 @@ function useGlobalBusy() {
       inFlight.current += 1;
       setBusy(true);
       try {
-        const res = await orig(...args);
-        return res;
+        return await orig(...args);
       } finally {
         inFlight.current -= 1;
         if (inFlight.current <= 0) setBusy(false);
       }
     };
 
-    return () => {
-      if (restore.current) restore.current();
-    };
+    return () => restore.current && restore.current();
   }, []);
 
   return busy;
 }
 
-function BusyOverlay({ show, label = "Loading…" }) {
+/** Small pill in the top-right. No backdrop, no visual change to the page. */
+function BusyPill({ show }) {
   if (!show) return null;
   return (
-    <div aria-hidden="true" style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(255,255,255,0.55)", display: "grid", placeItems: "center"
-    }}>
+    <div aria-hidden="true" style={{ position: "fixed", top: 12, right: 12, zIndex: 9999 }}>
       <div style={{
-        display: "inline-flex", alignItems: "center", gap: 10,
-        background: "#000", color: "#fff", borderRadius: 9999, padding: "8px 12px"
+        display: "inline-flex", alignItems: "center", gap: 8,
+        background: "#000", color: "#fff", borderRadius: 9999, padding: "6px 10px",
+        boxShadow: "0 8px 20px rgba(0,0,0,0.25)"
       }}>
-        <Spinner size={18} />
-        <span style={{ fontSize: 14 }}>{label}</span>
+        <Spinner size={14} />
+        <span style={{ fontSize: 12 }}>Loading…</span>
       </div>
     </div>
   );
@@ -133,7 +129,7 @@ function Button({ children, disabled, onClick, type = "button" }) {
 /* ========================= Main page ========================= */
 
 export default function Home() {
-  // flow: "code" -> "wallet" -> "link-x" -> optionally show xStatus
+  // flow: "code" -> "wallet" -> "link-x"
   const [step, setStep] = useState("code");
 
   const [code, setCode] = useState("");
@@ -143,7 +139,7 @@ export default function Home() {
   const [claimId, setClaimId] = useState("");
   const [xStatus, setXStatus] = useState(""); // "", "connected", "error"
 
-  const busy = useGlobalBusy(); // <-- full-page spinner toggles on any fetch
+  const busy = useGlobalBusy(); // small pill only — no backdrop
 
   // Parse return params from X callback (?x=ok|error & ?id=<claim_id>)
   useEffect(() => {
@@ -154,7 +150,6 @@ export default function Home() {
       setXStatus("connected");
       if (id) setClaimId(id);
       setStep("link-x");
-      // remove the params from the URL for cleanliness
       window.history.replaceState({}, "", u.pathname);
     } else if (x === "error") {
       setXStatus("error");
@@ -169,7 +164,6 @@ export default function Home() {
   async function checkCode(e) {
     e.preventDefault();
     setTier("");
-    // POST /api/code/check  -> { tier }
     const res = await fetch("/api/code/check", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -186,7 +180,6 @@ export default function Home() {
 
   async function submitWallet(e) {
     e.preventDefault();
-    // POST /api/claim -> { ok, id, wallet, tier, referral_code }
     const res = await fetch("/api/claim", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -219,7 +212,7 @@ export default function Home() {
         backgroundPosition: "center"
       }}
     >
-      <BusyOverlay show={busy} /> {/* full-page spinner */}
+      <BusyPill show={busy} /> {/* unobtrusive spinner only */}
 
       <Card>
         <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 6 }}>
@@ -242,7 +235,7 @@ export default function Home() {
             />
             <div style={{ height: 10 }} />
             <Button type="submit" disabled={!code.trim()}>
-              {busy ? "Checking…" : "Continue"}
+              Continue
             </Button>
             <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
               Your code will be verified against our list. Expired or already used codes will be rejected.
@@ -267,7 +260,7 @@ export default function Home() {
             />
             <div style={{ height: 10 }} />
             <Button type="submit" disabled={!wallet.trim()}>
-              {busy ? "Saving…" : "Save wallet"}
+              Save wallet
             </Button>
             <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
               This wallet will be used for your access claim. Make sure it’s correct.
@@ -300,9 +293,7 @@ export default function Home() {
                     textDecoration: "none", width: "100%"
                   }}
                 >
-                  <Button disabled={!claimId}>
-                    {busy ? "Opening Twitter…" : "Link Twitter now"}
-                  </Button>
+                  <Button disabled={!claimId}>Link Twitter now</Button>
                 </a>
                 <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
                   If you close the window, you can come back later and link from your profile or the resume page.
