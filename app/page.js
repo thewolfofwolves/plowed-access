@@ -1,11 +1,9 @@
-// app/page.js
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-/* --- tiny spinner + global busy flag --- */
+/* --- tiny spinner + global busy flag (does not change UI) --- */
 function Spinner({ size = 14, stroke = 2 }) {
-  const s = `${size}px`;
-  const r = (size - stroke) / 2;
+  const s = `${size}px`; const r = (size - stroke) / 2;
   return (
     <svg width={s} height={s} viewBox={`0 0 ${size} ${size}`} aria-label="Loading">
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth={stroke}/>
@@ -16,31 +14,23 @@ function Spinner({ size = 14, stroke = 2 }) {
     </svg>
   );
 }
-
 function useGlobalBusy() {
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(0);
   const restore = useRef(null);
-
   useEffect(() => {
     if (restore.current) return;
     const orig = window.fetch.bind(window);
     restore.current = () => (window.fetch = orig);
-
     window.fetch = async (...args) => {
-      inFlight.current += 1;
-      setBusy(true);
+      inFlight.current += 1; setBusy(true);
       try { return await orig(...args); }
-      finally {
-        inFlight.current -= 1;
-        if (inFlight.current <= 0) setBusy(false);
-      }
+      finally { inFlight.current -= 1; if (inFlight.current <= 0) setBusy(false); }
     };
     return () => restore.current && restore.current();
   }, []);
   return busy;
 }
-
 function BusyPill({ show }) {
   if (!show) return null;
   return (
@@ -55,137 +45,8 @@ function BusyPill({ show }) {
   );
 }
 
-"use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-
-/* ============== Tiny spinner + non-intrusive busy indicator ============== */
-
-function Spinner({ size = 18, stroke = 2 }) {
-  const s = `${size}px`;
-  const r = (size - stroke) / 2;
-  return (
-    <svg width={s} height={s} viewBox={`0 0 ${size} ${size}`} aria-label="Loading">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth={stroke} />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={`${Math.PI * r * 1.2} ${Math.PI * r * 2}`}
-        style={{ transformOrigin: "50% 50%", animation: "spin .8s linear infinite" }}
-      />
-      <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </svg>
-  );
-}
-
-/** Patches window.fetch on this page to expose a busy flag. */
-function useGlobalBusy() {
-  const [busy, setBusy] = useState(false);
-  const inFlight = useRef(0);
-  const restore = useRef(null);
-
-  useEffect(() => {
-    if (restore.current) return;
-    const orig = window.fetch.bind(window);
-    restore.current = () => (window.fetch = orig);
-
-    window.fetch = async (...args) => {
-      inFlight.current += 1;
-      setBusy(true);
-      try {
-        return await orig(...args);
-      } finally {
-        inFlight.current -= 1;
-        if (inFlight.current <= 0) setBusy(false);
-      }
-    };
-
-    return () => restore.current && restore.current();
-  }, []);
-
-  return busy;
-}
-
-/** Small pill in the top-right. No backdrop, no visual change to the page. */
-function BusyPill({ show }) {
-  if (!show) return null;
-  return (
-    <div aria-hidden="true" style={{ position: "fixed", top: 12, right: 12, zIndex: 9999 }}>
-      <div style={{
-        display: "inline-flex", alignItems: "center", gap: 8,
-        background: "#000", color: "#fff", borderRadius: 9999, padding: "6px 10px",
-        boxShadow: "0 8px 20px rgba(0,0,0,0.25)"
-      }}>
-        <Spinner size={14} />
-        <span style={{ fontSize: 12 }}>Loading…</span>
-      </div>
-    </div>
-  );
-}
-
-/* ===================== Minimal UI helpers ===================== */
-
-function Card({ children, style }) {
-  return (
-    <div style={{
-      background: "rgba(0,0,0,0.7)",
-      color: "#fff",
-      borderRadius: 14,
-      padding: 20,
-      width: "100%",
-      maxWidth: 520,
-      boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-      ...style
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function Label({ children }) {
-  return <label style={{ display: "block", fontSize: 14, marginBottom: 6 }}>{children}</label>;
-}
-
-function Input(props) {
-  return (
-    <input
-      {...props}
-      style={{
-        width: "100%", padding: "10px 12px", borderRadius: 10,
-        border: "1px solid #2f2f2f", background: "#111", color: "#fff",
-        fontFamily: props.mono ? "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" : undefined,
-        ...props.style
-      }}
-    />
-  );
-}
-
-function Button({ children, disabled, onClick, type = "button" }) {
-  return (
-    <button
-      type={type}
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        width: "100%", padding: "12px 14px", borderRadius: 10,
-        background: "#00c26e", color: "#0a0a0a", border: "none",
-        fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.6 : 1
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* ========================= Main page ========================= */
-
 export default function Home() {
-  // flow: "code" -> "wallet" -> "link-x"
+  // steps: "code" -> "wallet" -> "link-x"
   const [step, setStep] = useState("code");
 
   const [code, setCode] = useState("");
@@ -195,9 +56,9 @@ export default function Home() {
   const [claimId, setClaimId] = useState("");
   const [xStatus, setXStatus] = useState(""); // "", "connected", "error"
 
-  const busy = useGlobalBusy(); // small pill only — no backdrop
+  const busy = useGlobalBusy();
 
-  // Parse return params from X callback (?x=ok|error & ?id=<claim_id>)
+  // If we come back from Twitter with ?x=ok|error and maybe ?id=<claim_id>
   useEffect(() => {
     const u = new URL(window.location.href);
     const x = u.searchParams.get("x");
@@ -214,8 +75,6 @@ export default function Home() {
       window.history.replaceState({}, "", u.pathname);
     }
   }, []);
-
-  /* ---------- handlers ---------- */
 
   async function checkCode(e) {
     e.preventDefault();
@@ -255,8 +114,6 @@ export default function Home() {
     [claimId]
   );
 
-  /* ---------- render ---------- */
-
   return (
     <main
       style={{
@@ -268,9 +125,17 @@ export default function Home() {
         backgroundPosition: "center"
       }}
     >
-      <BusyPill show={busy} /> {/* unobtrusive spinner only */}
+      <BusyPill show={busy} />
 
-      <Card>
+      <div style={{
+        background: "rgba(0,0,0,0.7)",
+        color: "#fff",
+        borderRadius: 14,
+        padding: 20,
+        width: "100%",
+        maxWidth: 520,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.25)"
+      }}>
         <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 6 }}>
           PLOWED Access
         </h1>
@@ -278,53 +143,76 @@ export default function Home() {
           Claim access with your code, add your Solana wallet, then link your Twitter.
         </p>
 
-        {/* Step 1: Code */}
         {step === "code" && (
           <form onSubmit={checkCode}>
-            <Label>Access code</Label>
-            <Input
+            <label style={{ display: "block", fontSize: 14, marginBottom: 6 }}>Access code</label>
+            <input
               placeholder="Enter your code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               autoFocus
               autoComplete="one-time-code"
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 10,
+                border: "1px solid #2f2f2f", background: "#111", color: "#fff"
+              }}
             />
             <div style={{ height: 10 }} />
-            <Button type="submit" disabled={!code.trim()}>
+            <button
+              type="submit"
+              disabled={!code.trim()}
+              style={{
+                width: "100%", padding: "12px 14px", borderRadius: 10,
+                background: "#00c26e", color: "#0a0a0a", border: "none",
+                fontWeight: 600, cursor: !code.trim() ? "not-allowed" : "pointer",
+                opacity: !code.trim() ? 0.6 : 1
+              }}
+            >
               Continue
-            </Button>
+            </button>
             <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
               Your code will be verified against our list. Expired or already used codes will be rejected.
             </p>
           </form>
         )}
 
-        {/* Step 2: Wallet */}
         {step === "wallet" && (
           <form onSubmit={submitWallet}>
             <div style={{ marginBottom: 8, fontSize: 14, opacity: 0.9 }}>
               Code verified{tier ? ` — Tier: ${tier}` : ""}.
             </div>
-            <Label>Solana wallet address</Label>
-            <Input
+            <label style={{ display: "block", fontSize: 14, marginBottom: 6 }}>Solana wallet address</label>
+            <input
               placeholder="Your SOL wallet"
               value={wallet}
               onChange={(e) => setWallet(e.target.value)}
-              mono
               autoFocus
               autoComplete="off"
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 10,
+                border: "1px solid #2f2f2f", background: "#111", color: "#fff",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+              }}
             />
             <div style={{ height: 10 }} />
-            <Button type="submit" disabled={!wallet.trim()}>
+            <button
+              type="submit"
+              disabled={!wallet.trim()}
+              style={{
+                width: "100%", padding: "12px 14px", borderRadius: 10,
+                background: "#00c26e", color: "#0a0a0a", border: "none",
+                fontWeight: 600, cursor: !wallet.trim() ? "not-allowed" : "pointer",
+                opacity: !wallet.trim() ? 0.6 : 1
+              }}
+            >
               Save wallet
-            </Button>
+            </button>
             <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
               This wallet will be used for your access claim. Make sure it’s correct.
             </p>
           </form>
         )}
 
-        {/* Step 3: Link Twitter */}
         {step === "link-x" && (
           <div>
             {claimId ? (
@@ -344,12 +232,19 @@ export default function Home() {
                 )}
                 <a
                   href={startXLinkUrl}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 10,
-                    textDecoration: "none", width: "100%"
-                  }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 10, textDecoration: "none", width: "100%" }}
                 >
-                  <Button disabled={!claimId}>Link Twitter now</Button>
+                  <button
+                    disabled={!claimId}
+                    style={{
+                      width: "100%", padding: "12px 14px", borderRadius: 10,
+                      background: "#00c26e", color: "#0a0a0a", border: "none",
+                      fontWeight: 600, cursor: !claimId ? "not-allowed" : "pointer",
+                      opacity: !claimId ? 0.6 : 1
+                    }}
+                  >
+                    Link Twitter now
+                  </button>
                 </a>
                 <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
                   If you close the window, you can come back later and link from your profile or the resume page.
@@ -369,7 +264,7 @@ export default function Home() {
             Sign in with Twitter to see your profile
           </a>
         </p>
-      </Card>
+      </div>
     </main>
   );
 }
