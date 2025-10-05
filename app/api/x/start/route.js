@@ -1,39 +1,59 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supaAdmin } from "@/lib/supa";
 
-function b64url(buf){
-  return Buffer.from(buf).toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+function base64url(buf) {
+  return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function isUUID(v) {
+  return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
-export async function GET(req){
-  const { searchParams } = new URL(req.url);
-  const mode = (searchParams.get("mode") || "link").toLowerCase(); // "link" | "view"
-  const claimId = searchParams.get("claim"); // required for 'link'
+export async function GET(req) {
+  const url = new URL(req.url);
+  const mode = url.searchParams.get("mode") || "link"; // "link" | "view" | ...
+  const claimParam = url.searchParams.get("claim");    // might be undefined
+  const claim_id = isUUID(claimParam) ? claimParam : null;
 
-  if (mode === "link" && !claimId)
-    return NextResponse.json({ error: "Missing claim id" }, { status: 400 });
+  const CLIENT_ID = process.env.TW_CLIENT_ID;               // from X dev portal
+  const REDIRECT = `${process.env.APP_BASE_URL}/api/x/callback`; // must match in X app settings
+  if (!CLIENT_ID || !REDIRECT) {
+    return NextResponse.json({ error: "Missing TW_CLIENT_ID or APP_BASE_URL" }, { status: 500 });
+  }
 
-  const verifier = b64url(crypto.randomBytes(32));
-  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
+  // PKCE
+  const code_verifier = base64url(crypto.randomBytes(32));
+  const code_challenge = base64url(crypto.createHash("sha256").update(code_verifier).digest());
+  const state = crypto.randomUUID();
 
   const supa = supaAdmin();
-  const { data, error } = await supa
+
+  // Store state + verifier, and optionally claim_id if you passed a real UUID
+  const { error } = await supa
     .from("oauth_states")
-    .insert({ claim_id: claimId || null, code_verifier: verifier, purpose: mode })
-    .select("state")
-    .single();
+    .insert({
+      state,
+      code_verifier,
+      purpose: mode,     // e.g. 'link'
+      claim_id: claim_id // null if not provided/invalid
+    });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
-  const auth = new URL("https://twitter.com/i/oauth2/authorize");
-  auth.searchParams.set("response_type", "code");
-  auth.searchParams.set("client_id", process.env.TW_CLIENT_ID);
-  auth.searchParams.set("redirect_uri", `${process.env.APP_BASE_URL}/api/x/callback`);
-  auth.searchParams.set("scope", "tweet.read users.read offline.access");
-  auth.searchParams.set("state", data.state);
-  auth.searchParams.set("code_challenge", challenge);
-  auth.searchParams.set("code_challenge_method", "S256");
+  // Build the X OAuth 2.0 URL
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT,
+    scope: "tweet.read users.read offline.access", // adjust as needed
+    state,
+    code_challenge,
+    code_challenge_method: "S256"
+  });
 
-  return NextResponse.redirect(auth.toString());
+  return NextResponse.redirect(`https://twitter.com/i/oauth2/authorize?${params.toString()}`);
 }
