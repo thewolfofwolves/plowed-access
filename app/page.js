@@ -1,8 +1,139 @@
+// app/page.js
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+/* ============== Tiny spinner + global busy overlay ============== */
+
+function Spinner({ size = 18, stroke = 2 }) {
+  const s = `${size}px`;
+  const r = (size - stroke) / 2;
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${size} ${size}`} aria-label="Loading">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={`${Math.PI * r * 1.2} ${Math.PI * r * 2}`}
+        style={{ transformOrigin: "50% 50%", animation: "spin .8s linear infinite" }}
+      />
+      <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </svg>
+  );
+}
+
+/** Monkey-patch window.fetch on this page and expose a busy flag. */
+function useGlobalBusy() {
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(0);
+  const restore = useRef(null);
+
+  useEffect(() => {
+    if (restore.current) return;
+    const orig = window.fetch.bind(window);
+    restore.current = () => (window.fetch = orig);
+
+    window.fetch = async (...args) => {
+      inFlight.current += 1;
+      setBusy(true);
+      try {
+        const res = await orig(...args);
+        return res;
+      } finally {
+        inFlight.current -= 1;
+        if (inFlight.current <= 0) setBusy(false);
+      }
+    };
+
+    return () => {
+      if (restore.current) restore.current();
+    };
+  }, []);
+
+  return busy;
+}
+
+function BusyOverlay({ show, label = "Loading…" }) {
+  if (!show) return null;
+  return (
+    <div aria-hidden="true" style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(255,255,255,0.55)", display: "grid", placeItems: "center"
+    }}>
+      <div style={{
+        display: "inline-flex", alignItems: "center", gap: 10,
+        background: "#000", color: "#fff", borderRadius: 9999, padding: "8px 12px"
+      }}>
+        <Spinner size={18} />
+        <span style={{ fontSize: 14 }}>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ===================== Minimal UI helpers ===================== */
+
+function Card({ children, style }) {
+  return (
+    <div style={{
+      background: "rgba(0,0,0,0.7)",
+      color: "#fff",
+      borderRadius: 14,
+      padding: 20,
+      width: "100%",
+      maxWidth: 520,
+      boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+      ...style
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function Label({ children }) {
+  return <label style={{ display: "block", fontSize: 14, marginBottom: 6 }}>{children}</label>;
+}
+
+function Input(props) {
+  return (
+    <input
+      {...props}
+      style={{
+        width: "100%", padding: "10px 12px", borderRadius: 10,
+        border: "1px solid #2f2f2f", background: "#111", color: "#fff",
+        fontFamily: props.mono ? "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" : undefined,
+        ...props.style
+      }}
+    />
+  );
+}
+
+function Button({ children, disabled, onClick, type = "button" }) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: "100%", padding: "12px 14px", borderRadius: 10,
+        background: "#00c26e", color: "#0a0a0a", border: "none",
+        fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ========================= Main page ========================= */
 
 export default function Home() {
-  // steps: "code" -> "wallet" -> "link-x"
+  // flow: "code" -> "wallet" -> "link-x" -> optionally show xStatus
   const [step, setStep] = useState("code");
 
   const [code, setCode] = useState("");
@@ -12,163 +143,182 @@ export default function Home() {
   const [claimId, setClaimId] = useState("");
   const [xStatus, setXStatus] = useState(""); // "", "connected", "error"
 
-  // If we come back from Twitter with ?x=ok|error and maybe ?id=<claim_id>
+  const busy = useGlobalBusy(); // <-- full-page spinner toggles on any fetch
+
+  // Parse return params from X callback (?x=ok|error & ?id=<claim_id>)
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const x = p.get("x");
-    const id = p.get("id");
-    if (x) {
-      setXStatus(x === "ok" ? "connected" : "error");
-      // clean the query so refreshes don't keep the flags
-      window.history.replaceState({}, "", window.location.pathname);
+    const u = new URL(window.location.href);
+    const x = u.searchParams.get("x");
+    const id = u.searchParams.get("id");
+    if (x === "ok") {
+      setXStatus("connected");
+      if (id) setClaimId(id);
+      setStep("link-x");
+      // remove the params from the URL for cleanliness
+      window.history.replaceState({}, "", u.pathname);
+    } else if (x === "error") {
+      setXStatus("error");
+      if (id) setClaimId(id);
+      setStep("link-x");
+      window.history.replaceState({}, "", u.pathname);
     }
-    if (id) setClaimId(id);
   }, []);
+
+  /* ---------- handlers ---------- */
 
   async function checkCode(e) {
     e.preventDefault();
-    const r = await fetch("/api/code/check", {
+    setTier("");
+    // POST /api/code/check  -> { tier }
+    const res = await fetch("/api/code/check", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code })
     });
-    const j = await r.json();
-    if (!r.ok) {
-      alert(j.error || "Invalid code");
+    const json = await res.json();
+    if (!res.ok) {
+      alert(json.error || "Invalid or used code");
       return;
     }
-    setTier(j.tier || "Early Access");
+    setTier(json.tier || "Early Access");
     setStep("wallet");
   }
 
-  async function claim(e) {
+  async function submitWallet(e) {
     e.preventDefault();
-    const r = await fetch("/api/claim", {
+    // POST /api/claim -> { ok, id, wallet, tier, referral_code }
+    const res = await fetch("/api/claim", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, wallet }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, wallet })
     });
-    const j = await r.json();
-    if (!r.ok) {
-      alert(j.error || "Claim failed");
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      alert(json.error || "Could not create claim");
       return;
     }
-    setClaimId(j.id);
-    setStep("link-x"); // force Twitter link to complete registration
+    setClaimId(json.id);
+    setStep("link-x");
   }
 
-  // --- styles ---
-  const Card = ({ children }) => (
-    <div
-      style={{
-        maxWidth: 760,               // consistent content width
-        margin: "48px auto",
-        padding: 28,
-        background: "rgba(6,10,7,0.72)",
-        backdropFilter: "blur(8px)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 16,
-        boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-        boxSizing: "border-box",
-      }}
-    >
-      {children}
-    </div>
+  const startXLinkUrl = useMemo(
+    () => (claimId ? `/api/x/start?mode=link&claim=${encodeURIComponent(claimId)}` : "#"),
+    [claimId]
   );
 
-  const inputStyle = {
-    display: "block",
-    width: "100%",
-    padding: "14px 16px",
-    margin: "10px 0 16px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#eaf8eb",
-    boxSizing: "border-box",
-  };
-
-  const buttonStyle = {
-    padding: "12px 18px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(87,214,127,0.22)",
-    color: "#eaf8eb",
-    cursor: "pointer",
-    textDecoration: "none",
-  };
+  /* ---------- render ---------- */
 
   return (
-    <main>
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        backgroundImage: "url(/bg.jpg), url(/bg.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }}
+    >
+      <BusyOverlay show={busy} /> {/* full-page spinner */}
+
       <Card>
-        <h1 style={{ fontSize: 40, margin: "0 0 6px" }}>Claim your Early Access</h1>
-        <p style={{ opacity: 0.9, margin: "0 0 20px" }}>
-          Enter your access code, then paste your Solana wallet to register for Early Access.
+        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 6 }}>
+          PLOWED Access
+        </h1>
+        <p style={{ opacity: 0.8, marginBottom: 20 }}>
+          Claim access with your code, add your Solana wallet, then link your Twitter.
         </p>
 
+        {/* Step 1: Code */}
         {step === "code" && (
           <form onSubmit={checkCode}>
-            <label>Access code</label>
-            <input
+            <Label>Access code</Label>
+            <Input
+              placeholder="Enter your code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              required
-              style={inputStyle}
-              placeholder="Enter your code"
+              autoFocus
+              autoComplete="one-time-code"
             />
-            <button type="submit" style={buttonStyle}>Continue</button>
+            <div style={{ height: 10 }} />
+            <Button type="submit" disabled={!code.trim()}>
+              {busy ? "Checking…" : "Continue"}
+            </Button>
+            <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+              Your code will be verified against our list. Expired or already used codes will be rejected.
+            </p>
           </form>
         )}
 
+        {/* Step 2: Wallet */}
         {step === "wallet" && (
-          <form onSubmit={claim}>
-            <p style={{ marginTop: 0 }}>
-              Tier detected: <strong>{tier}</strong>
-            </p>
-            <label>Solana wallet address</label>
-            <input
+          <form onSubmit={submitWallet}>
+            <div style={{ marginBottom: 8, fontSize: 14, opacity: 0.9 }}>
+              Code verified{tier ? ` — Tier: ${tier}` : ""}.
+            </div>
+            <Label>Solana wallet address</Label>
+            <Input
+              placeholder="Your SOL wallet"
               value={wallet}
               onChange={(e) => setWallet(e.target.value)}
-              required
-              style={inputStyle}
-              placeholder="e.g. 7p9…Xk"
+              mono
+              autoFocus
+              autoComplete="off"
             />
-            <button type="submit" style={buttonStyle}>Save wallet</button>
+            <div style={{ height: 10 }} />
+            <Button type="submit" disabled={!wallet.trim()}>
+              {busy ? "Saving…" : "Save wallet"}
+            </Button>
+            <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+              This wallet will be used for your access claim. Make sure it’s correct.
+            </p>
           </form>
         )}
 
+        {/* Step 3: Link Twitter */}
         {step === "link-x" && (
           <div>
-            <h2 style={{ marginTop: 0 }}>Verify your X (Twitter)</h2>
-            <p>To finish registration, link your Twitter account.</p>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <a
-                href={`/api/x/start?mode=link&claim=${encodeURIComponent(claimId)}`}
-                style={buttonStyle}
-              >
-                Connect Twitter
-              </a>
-              {xStatus === "connected" && <span>Twitter linked ✓</span>}
-              {xStatus === "error" && (
-                <span style={{ color: "#f5a3a3" }}>
-                  Linking failed — try again
-                </span>
-              )}
-            </div>
-            {xStatus === "connected" && (
-              <p style={{ marginTop: 14 }}>
-                You’re done. View your profile at{" "}
-                <a href="/profile" style={{ color: "#b9f6c5" }}>
-                  Profile
-                </a>.
-              </p>
+            {claimId ? (
+              <>
+                <div style={{ marginBottom: 12, fontSize: 14 }}>
+                  Claim created: <span style={{ fontFamily: "monospace" }}>{claimId}</span>
+                </div>
+                {xStatus === "connected" && (
+                  <div style={{ marginBottom: 12, padding: 10, borderRadius: 10, background: "#0a311f", color: "#b9f6c5" }}>
+                    Twitter linked successfully.
+                  </div>
+                )}
+                {xStatus === "error" && (
+                  <div style={{ marginBottom: 12, padding: 10, borderRadius: 10, background: "#31110a", color: "#f6b9b9" }}>
+                    Twitter linking failed. Try again below.
+                  </div>
+                )}
+                <a
+                  href={startXLinkUrl}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 10,
+                    textDecoration: "none", width: "100%"
+                  }}
+                >
+                  <Button disabled={!claimId}>
+                    {busy ? "Opening Twitter…" : "Link Twitter now"}
+                  </Button>
+                </a>
+                <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                  If you close the window, you can come back later and link from your profile or the resume page.
+                </p>
+              </>
+            ) : (
+              <div style={{ padding: 10, borderRadius: 10, background: "#31110a", color: "#f6b9b9" }}>
+                Missing claim id. Please go back and re-enter your code and wallet.
+              </div>
             )}
           </div>
         )}
 
-        <p style={{ marginTop: 12 }}>
+        <p style={{ marginTop: 16 }}>
           Already signed up?{" "}
-          <a href="/profile" style={{ color: "#b9f6c5" }}>
+          <a href="/profile" style={{ color: "#b9f6c5", textDecoration: "underline" }}>
             Sign in with Twitter to see your profile
           </a>
         </p>
