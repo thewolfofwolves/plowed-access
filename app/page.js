@@ -227,7 +227,7 @@ export default function Home() {
                   onChange={(e) => setWallet(e.target.value)}
                   required
                   style={inputStyle}
-                  placeholder="Enter the same wallet used previously, with the original access code entered above"
+                  placeholder="Enter the wallet used previously, with the original access code entered above"
                   autoComplete="off"
                 />
                 <button type="submit" style={resuming ? buttonDisabledStyle : buttonStyle} disabled={resuming}>
