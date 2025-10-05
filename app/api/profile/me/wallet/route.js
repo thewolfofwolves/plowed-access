@@ -1,4 +1,3 @@
-// app/api/profile/me/wallet/route.js
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -23,7 +22,7 @@ export async function PATCH(req) {
   const sess = parseSigned(token);
   if (!sess?.xUserId) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-    }
+  }
 
   const { wallet } = await req.json().catch(() => ({}));
   if (!wallet || typeof wallet !== "string" || wallet.length < 20) {
@@ -32,12 +31,11 @@ export async function PATCH(req) {
 
   const supa = supaAdmin();
 
-  // find most recent claim for this user
+  // Find any claim for this user (no ORDER BY dependency)
   const { data: claim } = await supa
     .from("claims")
     .select("id")
     .eq("x_user_id", String(sess.xUserId))
-    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
