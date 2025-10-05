@@ -2,9 +2,8 @@
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import { supaAdmin } from "@/lib/supa";
-import React from "react";
 
-/* ---------- session cookie ---------- */
+/* ----- session cookie parsing ----- */
 const APP_SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret";
 
 function parseSigned(token) {
@@ -17,114 +16,12 @@ function parseSigned(token) {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-/* ---------- small client bits ---------- */
-function CopyButton({ text }) {
-  async function onCopy() {
-    try {
-      await navigator.clipboard.writeText(text || "");
-    } catch {}
-  }
-  return (
-    <button
-      onClick={onCopy}
-      style={{
-        marginLeft: 8,
-        padding: "6px 10px",
-        fontSize: 13,
-        borderRadius: 10,
-        border: "1px solid rgba(255,255,255,0.18)",
-        background: "rgba(87,214,127,0.22)",
-        color: "#eaf8eb",
-        cursor: "pointer",
-      }}
-      type="button"
-    >
-      Copy
-    </button>
-  );
-}
-
-function UpdateWalletForm({ initial, code, resumeHint }) {
-  "use client";
-  const [wallet, setWallet] = React.useState(initial || "");
-  const [saving, setSaving] = React.useState(false);
-
-  async function submit(e) {
-    e.preventDefault();
-    if (!wallet) return;
-    setSaving(true);
-    try {
-      // If you already have an endpoint for this, keep the path the same.
-      // Otherwise, this will safely 404 with an alert.
-      const r = await fetch("/api/profile/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        alert(j.error || "Could not save wallet");
-        return;
-      }
-      alert("Wallet saved");
-    } catch {
-      alert("Network error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={submit} style={{ marginTop: 16 }}>
-      <label htmlFor="wallet" style={{ display: "block", marginBottom: 8 }}>Update wallet address</label>
-      <input
-        id="wallet"
-        value={wallet}
-        onChange={(e) => setWallet(e.target.value)}
-        placeholder="Paste a new Solana wallet"
-        style={{
-          display: "block",
-          width: "100%",
-          padding: "12px 14px",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.18)",
-          background: "rgba(255,255,255,0.06)",
-          color: "#eaf8eb",
-          boxSizing: "border-box",
-          marginBottom: 10,
-        }}
-      />
-      <button
-        type="submit"
-        disabled={saving}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.18)",
-          background: "rgba(87,214,127,0.22)",
-          color: "#eaf8eb",
-          cursor: saving ? "not-allowed" : "pointer",
-        }}
-      >
-        {saving ? "Saving…" : "Save wallet"}
-      </button>
-      {resumeHint ? (
-        <p style={{ marginTop: 10, opacity: 0.8, fontSize: 13 }}>
-          If you didn’t finish linking earlier, you can resume from the main page
-          using the **same** code and this wallet.
-        </p>
-      ) : null}
-    </form>
-  );
-}
-
-/* ---------- page (server) ---------- */
 export default async function ProfilePage() {
-  // 1) read signed session
+  // 1) session
   const token = cookies().get("plowed_session")?.value || null;
   const sess = parseSigned(token);
 
-  // styles consistent with your main card
+  // shared styles
   const card = {
     maxWidth: 820,
     margin: "64px auto",
@@ -139,7 +36,7 @@ export default async function ProfilePage() {
   const row = { margin: "8px 0" };
   const subtle = { opacity: 0.85 };
 
-  // 2) no session → show sign-in card (unchanged behaviour)
+  // 2) unauthenticated → sign-in card
   if (!sess?.xUserId) {
     return (
       <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "24px 16px" }}>
@@ -166,7 +63,7 @@ export default async function ProfilePage() {
     );
   }
 
-  // 3) we’re signed in — fetch their claim + code/tier/referral
+  // 3) signed in → fetch claim + code/tier
   const supa = supaAdmin();
   const { data: claim } = await supa
     .from("claims")
@@ -188,13 +85,13 @@ export default async function ProfilePage() {
 
   const wallet = claim?.wallet_address || "";
   const tier = codeRow?.tier || "Early Access";
-  const referral = codeRow?.code || null; // if you store a separate referral, swap here
+  const referral = codeRow?.code || null;           // change if you store a separate referral field
   const handle = claim?.x_username ? `@${claim.x_username}` : "linked";
 
   return (
     <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "24px 16px" }}>
       <div style={card}>
-        {/* header row */}
+        {/* header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 16 }}>
           <h1 style={title}>Your Farmer profile</h1>
           <a
@@ -218,21 +115,15 @@ export default async function ProfilePage() {
         </div>
 
         {/* details */}
-        <p style={row}><strong>Wallet:</strong> {wallet || "(no wallet found for this account)"} {wallet ? <CopyButton text={wallet} /> : null}</p>
+        <p style={row}><strong>Wallet:</strong> {wallet || "(no wallet found for this account)"}</p>
         <p style={row}><strong>Tier:</strong> {tier}</p>
-        <p style={row}>
-          <strong>Referral code:</strong>{" "}
-          {referral ? <>{referral} <CopyButton text={referral} /></> : "(not available)"}
-        </p>
+        <p style={row}><strong>Referral code:</strong> {referral ?? "(not available)"}</p>
 
         {/* twitter block */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
-          {/* If you store an avatar URL, place it here; placeholder circle otherwise */}
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
+              width: 44, height: 44, borderRadius: "50%",
               background: "rgba(255,255,255,0.12)",
               display: "inline-block",
             }}
@@ -243,9 +134,51 @@ export default async function ProfilePage() {
           </div>
         </div>
 
-        {/* update wallet form */}
-        <UpdateWalletForm initial={wallet} code={referral} resumeHint={!wallet} />
-
+        {/* update wallet (server-post — no client hooks) */}
+        <form
+          method="post"
+          action="/api/profile/wallet"
+          style={{ marginTop: 16 }}
+        >
+          <label htmlFor="wallet" style={{ display: "block", marginBottom: 8 }}>
+            Update wallet address
+          </label>
+          <input
+            id="wallet"
+            name="wallet"
+            defaultValue={wallet}
+            placeholder="Paste a new Solana wallet"
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(255,255,255,0.06)",
+              color: "#eaf8eb",
+              boxSizing: "border-box",
+              marginBottom: 10,
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(87,214,127,0.22)",
+              color: "#eaf8eb",
+              cursor: "pointer",
+            }}
+          >
+            Save wallet
+          </button>
+          {!wallet && (
+            <p style={{ marginTop: 10, opacity: 0.8, fontSize: 13 }}>
+              If you didn’t finish linking earlier, resume from the main page using the same code and this wallet.
+            </p>
+          )}
+        </form>
       </div>
     </main>
   );
