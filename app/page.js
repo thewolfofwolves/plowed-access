@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Home() {
   // steps: "code" -> "wallet" -> "link-x"
@@ -17,18 +17,6 @@ export default function Home() {
   const [savingWallet, setSavingWallet] = useState(false);
   const [resuming, setResuming] = useState(false);
 
-  // focus the code box once on mount (no stealing focus afterwards)
-  const codeInputRef = useRef(null);
-  useEffect(() => {
-    if (codeInputRef.current) {
-      // Only if nothing else is focused
-      if (!document.activeElement || document.activeElement === document.body) {
-        codeInputRef.current.focus();
-      }
-    }
-    // empty deps: run once only
-  }, []);
-
   // tiny inline spinner (no layout changes)
   const Spinner = ({ size = 14, stroke = 2 }) => {
     const s = `${size}px`;
@@ -44,14 +32,13 @@ export default function Home() {
     );
   };
 
-  // If we come back from Twitter with ?x=ok|error and maybe ?id=<claim_id>
+  // Handle return from Twitter (?x=ok|error & ?id=<claim_id>)
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const x = p.get("x");
     const id = p.get("id");
     if (x) {
       setXStatus(x === "ok" ? "connected" : "error");
-      // clean the query so refreshes don't keep the flags
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (id) setClaimId(id);
@@ -133,7 +120,7 @@ export default function Home() {
   const Card = ({ children }) => (
     <div
       style={{
-        maxWidth: 760,
+        maxWidth: 760,               // consistent content width
         margin: "48px auto",
         padding: 28,
         background: "rgba(6,10,7,0.72)",
@@ -192,7 +179,6 @@ export default function Home() {
             <form onSubmit={checkCode}>
               <label>Access code</label>
               <input
-                ref={codeInputRef}        {/* focus once on mount only */}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
