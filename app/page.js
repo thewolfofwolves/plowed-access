@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   // steps: "code" -> "wallet" -> "link-x"
@@ -16,6 +16,18 @@ export default function Home() {
   const [checkingCode, setCheckingCode] = useState(false);
   const [savingWallet, setSavingWallet] = useState(false);
   const [resuming, setResuming] = useState(false);
+
+  // focus the code box once on mount (no stealing focus afterwards)
+  const codeInputRef = useRef(null);
+  useEffect(() => {
+    if (codeInputRef.current) {
+      // Only if nothing else is focused
+      if (!document.activeElement || document.activeElement === document.body) {
+        codeInputRef.current.focus();
+      }
+    }
+    // empty deps: run once only
+  }, []);
 
   // tiny inline spinner (no layout changes)
   const Spinner = ({ size = 14, stroke = 2 }) => {
@@ -180,7 +192,7 @@ export default function Home() {
             <form onSubmit={checkCode}>
               <label>Access code</label>
               <input
-                autoFocus
+                ref={codeInputRef}        {/* focus once on mount only */}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
