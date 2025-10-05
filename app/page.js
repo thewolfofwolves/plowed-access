@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Home() {
   // steps: "code" -> "wallet" -> "link-x"
@@ -16,15 +16,6 @@ export default function Home() {
   const [checkingCode, setCheckingCode] = useState(false);
   const [savingWallet, setSavingWallet] = useState(false);
   const [resuming, setResuming] = useState(false);
-
-  // keep focus stable on the code input
-  const codeInputRef = useRef(null);
-  useEffect(() => {
-    if (step !== "code") return;
-    // if focus drifts away during typing, put it back
-    const el = codeInputRef.current;
-    if (el && document.activeElement !== el) el.focus();
-  }, [code, step]);
 
   // tiny inline spinner (no layout changes)
   const Spinner = ({ size = 14, stroke = 2 }) => {
@@ -189,7 +180,6 @@ export default function Home() {
             <form onSubmit={checkCode}>
               <label>Access code</label>
               <input
-                ref={codeInputRef}
                 autoFocus
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
