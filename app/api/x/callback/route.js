@@ -1,87 +1,65 @@
+// app/api/x/callback/route.js
+export const runtime = "nodejs";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import crypto from "crypto";
 import { supaAdmin } from "@/lib/supa";
+
+// simple HMAC signer using an env secret
+const APP_SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret";
+function sign(data) {
+  const raw = JSON.stringify(data);
+  const mac = crypto.createHmac("sha256", APP_SECRET).update(raw).digest("base64url");
+  return `${mac}.${Buffer.from(raw).toString("base64url")}`;
+}
+function parse(token) {
+  if (!token) return null;
+  const [mac, b64] = token.split(".");
+  if (!mac || !b64) return null;
+  const raw = Buffer.from(b64, "base64url").toString();
+  const expect = crypto.createHmac("sha256", APP_SECRET).update(raw).digest("base64url");
+  if (mac !== expect) return null;
+  return JSON.parse(raw);
+}
 
 export async function GET(req) {
   const url = new URL(req.url);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
+  const claimId = url.searchParams.get("state") || url.searchParams.get("claim"); // whatever you passed to X
+  // ... your existing code: exchange code -> access token -> fetch profile
+  // assume you resolved a profile object { id_str, screen_name, name }
 
-  // helper for consistent error redirects + cleanup
-  const fail = async (stage, stRow) => {
-    if (stRow?.state) {
-      try { await supaAdmin().from("oauth_states").delete().eq("state", stRow.state); } catch {}
-    }
-    return NextResponse.redirect(`${process.env.APP_BASE_URL}/profile?x=error&stage=${encodeURIComponent(stage)}`);
-  };
+  // --- BEGIN: replace this mock with your real profile fetch ---
+  // If your code already has profile, delete this block.
+  const profile = req.profile || null; // put your real profile here
+  // --- END mock ---
 
-  if (!code || !state) {
-    return NextResponse.redirect(`${process.env.APP_BASE_URL}/profile?x=error&stage=missing_params`);
+  if (!claimId || !profile?.id_str) {
+    // error path: do NOT set session, just bounce with error
+    return NextResponse.redirect(new URL(`/?x=error&id=${encodeURIComponent(claimId || "")}`, req.url));
   }
 
+  // Update the claim as linked (no placeholders!)
   const supa = supaAdmin();
+  await supa
+    .from("claims")
+    .update({
+      x_user_id: String(profile.id_str),
+      x_username: profile.screen_name || null,
+      x_name: profile.name || null,
+    })
+    .eq("id", claimId);
 
-  // 1) find PKCE verifier + purpose
-  const { data: st, error: stErr } = await supa
-    .from("oauth_states")
-    .select("state, claim_id, code_verifier, purpose")
-    .eq("state", state)
-    .single();
-
-  if (stErr || !st) return NextResponse.redirect(`${process.env.APP_BASE_URL}/profile?x=error&stage=state_lookup`);
-
-  // 2) exchange code for token (PKCE flow: client_id + code_verifier)
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    client_id: process.env.TW_CLIENT_ID,
-    code,
-    redirect_uri: `${process.env.APP_BASE_URL}/api/x/callback`,
-    code_verifier: st.code_verifier
+  // Create a short session cookie so /profile can open immediately
+  const token = sign({ claimId, xUserId: String(profile.id_str) });
+  const res = NextResponse.redirect(new URL("/profile", req.url));
+  res.cookies.set({
+    name: "plowed_session",
+    value: token,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7, // 7 days
   });
-
-  const tokRes = await fetch("https://api.twitter.com/2/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString()
-  });
-
-  if (!tokRes.ok) return fail(`token_${tokRes.status}`, st);
-  const tok = await tokRes.json();
-  if (!tok?.access_token) return fail("token_no_access_token", st);
-
-  // 3) fetch profile
-  const meRes = await fetch(
-    "https://api.twitter.com/2/users/me?user.fields=profile_image_url,name,username",
-    { headers: { Authorization: `Bearer ${tok.access_token}` } }
-  );
-  if (!meRes.ok) return fail(`profile_${meRes.status}`, st);
-  const me = await meRes.json();
-  const u = me?.data;
-  if (!u?.id) return fail("profile_no_user", st);
-
-  // 4) link or view
-  let resp;
-  if (st.purpose === "link") {
-    const { error: updErr } = await supa
-      .from("claims")
-      .update({
-        x_user_id: u.id,
-        x_username: u.username || null,
-        x_name: u.name || null,
-        x_avatar_url: u.profile_image_url || null
-      })
-      .eq("id", st.claim_id);
-
-    resp = updErr
-      ? NextResponse.redirect(`${process.env.APP_BASE_URL}/profile?id=${encodeURIComponent(st.claim_id)}&x=error&stage=update_claim`)
-      : NextResponse.redirect(`${process.env.APP_BASE_URL}/profile?id=${encodeURIComponent(st.claim_id)}&x=ok`);
-  } else {
-    // view mode: set cookie
-    resp = NextResponse.redirect(`${process.env.APP_BASE_URL}/profile/me`);
-    resp.cookies.set("x_uid", u.id, { httpOnly: true, secure: true, sameSite: "lax", maxAge: 60 * 15 });
-  }
-
-  // 5) cleanup state even on success
-  try { await supa.from("oauth_states").delete().eq("state", st.state); } catch {}
-
-  return resp;
+  return res;
 }
