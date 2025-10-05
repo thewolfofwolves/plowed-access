@@ -227,7 +227,7 @@ export default function Home() {
                   onChange={(e) => setWallet(e.target.value)}
                   required
                   style={inputStyle}
-                  placeholder="Enter the same wallet you used"
+                  placeholder="Enter the same wallet used previously, with the original access code entered above"
                   autoComplete="off"
                 />
                 <button type="submit" style={resuming ? buttonDisabledStyle : buttonStyle} disabled={resuming}>
@@ -236,7 +236,7 @@ export default function Home() {
                 </button>
               </form>
               <p style={{ marginTop: 8, opacity: 0.8, fontSize: 14 }}>
-                We’ll verify your code and wallet, then send you to Twitter to finish linking.
+                We’ll verify your code and wallet pair, then send you to Twitter to finish linking.
               </p>
             </div>
           </>
