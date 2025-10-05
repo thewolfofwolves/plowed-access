@@ -1,120 +1,69 @@
+// app/api/x/start/route.js
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-import crypto from "crypto";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { supaAdmin } from "@/lib/supa";
 
-/**
- * Helpers
- */
-function toBase64Url(buf) {
-  return Buffer.from(buf)
+function base64url(input) {
+  return Buffer.from(input)
     .toString("base64")
+    .replace(/=/g, "")
     .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+    .replace(/\//g, "_");
 }
 
-function sha256(input) {
-  return crypto.createHash("sha256").update(input).digest();
-}
-
-function readCookie(req, name) {
-  // Plain header parse (no NextRequest wrapper here)
-  const header = req.headers.get("cookie") || "";
-  const parts = header.split(";").map((s) => s.trim());
-  for (const p of parts) {
-    const idx = p.indexOf("=");
-    if (idx > -1) {
-      const k = decodeURIComponent(p.slice(0, idx));
-      const v = decodeURIComponent(p.slice(idx + 1));
-      if (k === name) return v;
-    }
-  }
-  return null;
-}
-
-const uuidRegex =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/**
- * GET /api/x/start?mode=link&claim=<uuid>
- *
- * - Accepts claim via query OR the short-lived x_claim cookie (fallback)
- * - Saves PKCE + state into oauth_states
- * - Redirects to X authorize URL
- */
 export async function GET(req) {
-  try {
-    const url = new URL(req.url);
-    const mode = url.searchParams.get("mode") || "link";
-    let claimId = url.searchParams.get("claim");
-
-    // fallback to cookie if query is missing
-    if (!claimId) {
-      const cookieVal = readCookie(req, "x_claim");
-      if (cookieVal && uuidRegex.test(cookieVal)) {
-        claimId = cookieVal;
-      }
-    }
-
-    // Require a valid UUID for link mode
-    if (mode === "link" && (!claimId || !uuidRegex.test(claimId))) {
-      // Soft redirect back to /profile with an error flag
-      return NextResponse.redirect("/profile?x=error&stage=missing_claim", 302);
-    }
-
-    const CLIENT_ID = process.env.TW_CLIENT_ID;
-    const APP_BASE_URL = process.env.APP_BASE_URL; // e.g. https://access.plowed.earth
-    if (!CLIENT_ID || !APP_BASE_URL) {
-      return NextResponse.json(
-        { error: "Missing TW_CLIENT_ID or APP_BASE_URL" },
-        { status: 500 }
-      );
-    }
-
-    const redirectUri = `${APP_BASE_URL}/api/x/callback`;
-
-    // Create PKCE verifier/challenge + state
-    const codeVerifier = toBase64Url(crypto.randomBytes(32));
-    const codeChallenge = toBase64Url(sha256(codeVerifier));
-    const state = crypto.randomUUID();
-
-    // Persist oauth state
-    const supa = supaAdmin();
-    const insert = {
-      state,
-      code_verifier: codeVerifier,
-      purpose: mode === "view" ? "view" : "link",
-      created_at: new Date().toISOString(),
-    };
-    if (claimId) insert.claim_id = claimId;
-
-    const { error } = await supa.from("oauth_states").insert(insert);
-    if (error) {
-      console.error("oauth_states insert error:", error);
-      return NextResponse.json(
-        { error: "Could not start Twitter OAuth" },
-        { status: 500 }
-      );
-    }
-
-    // Scopes: we only need profile info
-    const scope = encodeURIComponent("tweet.read users.read offline.access");
-
-    const authUrl =
-      "https://twitter.com/i/oauth2/authorize" +
-      `?response_type=code` +
-      `&client_id=${encodeURIComponent(CLIENT_ID)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&scope=${scope}` +
-      `&state=${encodeURIComponent(state)}` +
-      `&code_challenge=${encodeURIComponent(codeChallenge)}` +
-      `&code_challenge_method=S256`;
-
-    return NextResponse.redirect(authUrl, 302);
-  } catch (e) {
-    console.error("x/start error:", e);
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+  const APP_BASE_URL = process.env.APP_BASE_URL; // e.g. https://access.plowed.earth
+  const TW_CLIENT_ID = process.env.TW_CLIENT_ID;
+  if (!APP_BASE_URL || !TW_CLIENT_ID) {
+    return new NextResponse("Server misconfigured", { status: 500 });
   }
+
+  // Use nextUrl (safe for dynamic routes)
+  const url = req.nextUrl;
+  const mode = url.searchParams.get("mode") || "link"; // 'link' or 'view' (your choice)
+  const claimId =
+    url.searchParams.get("claim") || req.cookies.get("claim_id")?.value || null;
+
+  // Generate PKCE code_verifier + code_challenge
+  const code_verifier = base64url(crypto.randomBytes(32));
+  const code_challenge = base64url(
+    crypto.createHash("sha256").update(code_verifier).digest()
+  );
+
+  // Random state we store in DB so we can retrieve mode/claimId later
+  const state = crypto.randomUUID();
+
+  // Persist OAuth state
+  const supa = supaAdmin();
+  const { error } = await supa.from("oauth_states").insert({
+    state,
+    code_verifier,
+    purpose: mode === "link" ? "link" : "view",
+    claim_id: claimId,
+  });
+  if (error) {
+    // absolute redirect on error
+    const dest = new URL("/profile?x=error&stage=server", APP_BASE_URL);
+    return NextResponse.redirect(dest);
+  }
+
+  // Build Twitter OAuth2 URL
+  const callback = new URL("/api/x/callback", APP_BASE_URL).toString();
+  const twitterAuth = new URL("https://twitter.com/i/oauth2/authorize");
+  twitterAuth.searchParams.set("response_type", "code");
+  twitterAuth.searchParams.set("client_id", TW_CLIENT_ID);
+  twitterAuth.searchParams.set(
+    "scope",
+    // request only what you need
+    "tweet.read users.read offline.access"
+  );
+  twitterAuth.searchParams.set("redirect_uri", callback);
+  twitterAuth.searchParams.set("state", state);
+  twitterAuth.searchParams.set("code_challenge", code_challenge);
+  twitterAuth.searchParams.set("code_challenge_method", "S256");
+
+  return NextResponse.redirect(twitterAuth.toString());
 }
