@@ -1,4 +1,3 @@
-// app/api/profile/me/route.js
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -7,8 +6,8 @@ import { cookies } from "next/headers";
 import crypto from "crypto";
 import { supaAdmin } from "@/lib/supa";
 
-// verify the signed session cookie set in /api/x/callback
 const APP_SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret";
+
 function parseSigned(token) {
   if (!token) return null;
   const [mac, b64] = token.split(".");
@@ -28,37 +27,31 @@ export async function GET() {
 
   const supa = supaAdmin();
 
-  // latest claim for this X user
-  const { data: claim } = await supa
+  // Keep it simple: find any claim for this x_user_id (no ORDER BY; works without timestamps)
+  const { data: claim, error } = await supa
     .from("claims")
-    .select("id, wallet_address, x_user_id, x_username, x_name, x_avatar_url, code_id, created_at")
+    .select("id, wallet_address, x_user_id, x_username, x_name, x_avatar_url, referral_code, code_id")
     .eq("x_user_id", String(sess.xUserId))
-    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  let tier = "Early Access";
-  let referral_code = null;
-
-  if (claim?.code_id) {
-    const { data: codeRow } = await supa
-      .from("codes")
-      .select("code, tier")
-      .eq("id", claim.code_id)
-      .single();
-    if (codeRow) {
-      referral_code = codeRow.code || null;
-      tier = codeRow.tier || tier;
-    }
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  // return exactly what /me uses
-  return NextResponse.json({
+  // If nothing matched, return empty fields so the UI is consistent (and set a debug header)
+  const res = NextResponse.json({
     wallet_address: claim?.wallet_address || "",
-    tier,
-    referral_code,
+    tier: "Early Access",                    // default; your UI shows this by default
+    referral_code: claim?.referral_code || null, // your table already has referral_code
     x_username: claim?.x_username || null,
     x_name: claim?.x_name || null,
     x_avatar_url: claim?.x_avatar_url || null,
   });
+
+  res.headers.set(
+    "x-me-debug",
+    claim ? `found:${claim.id}` : `not_found_for_x:${String(sess.xUserId)}`
+  );
+  return res;
 }
