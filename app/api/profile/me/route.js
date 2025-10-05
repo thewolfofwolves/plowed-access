@@ -1,25 +1,64 @@
+// app/api/profile/me/route.js
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import crypto from "crypto";
 import { supaAdmin } from "@/lib/supa";
 
-export async function GET(req){
-  try{
-    const xuid = req.cookies.get("x_uid")?.value;
-    if(!xuid) return NextResponse.json({error:"Not signed in"}, { status: 401 });
+// verify the signed session cookie set in /api/x/callback
+const APP_SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret";
+function parseSigned(token) {
+  if (!token) return null;
+  const [mac, b64] = token.split(".");
+  if (!mac || !b64) return null;
+  const raw = Buffer.from(b64, "base64url").toString();
+  const expect = crypto.createHmac("sha256", APP_SECRET).update(raw).digest("base64url");
+  if (mac !== expect) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
 
-    const supa = supaAdmin();
-    const { data, error } = await supa
-      .from("claims")
-      .select("id, wallet_address, tier, claimed_at, referral_code, x_user_id, x_username, x_name, x_avatar_url")
-      .eq("x_user_id", xuid)
-      .order("claimed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if(error) return NextResponse.json({error:error.message},{status:400});
-    if(!data) return NextResponse.json({error:"No profile found"}, { status: 404 });
-
-    return NextResponse.json(data);
-  }catch(e){
-    return NextResponse.json({error:e.message || "Server error"}, { status: 500 });
+export async function GET() {
+  const token = cookies().get("plowed_session")?.value || null;
+  const sess = parseSigned(token);
+  if (!sess?.xUserId) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
+
+  const supa = supaAdmin();
+
+  // latest claim for this X user
+  const { data: claim } = await supa
+    .from("claims")
+    .select("id, wallet_address, x_user_id, x_username, x_name, x_avatar_url, code_id, created_at")
+    .eq("x_user_id", String(sess.xUserId))
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let tier = "Early Access";
+  let referral_code = null;
+
+  if (claim?.code_id) {
+    const { data: codeRow } = await supa
+      .from("codes")
+      .select("code, tier")
+      .eq("id", claim.code_id)
+      .single();
+    if (codeRow) {
+      referral_code = codeRow.code || null;
+      tier = codeRow.tier || tier;
+    }
+  }
+
+  // return exactly what /me uses
+  return NextResponse.json({
+    wallet_address: claim?.wallet_address || "",
+    tier,
+    referral_code,
+    x_username: claim?.x_username || null,
+    x_name: claim?.x_name || null,
+    x_avatar_url: claim?.x_avatar_url || null,
+  });
 }
