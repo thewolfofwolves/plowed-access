@@ -15,19 +15,14 @@ export default function Home() {
   // local loading flags (only change button content/state)
   const [checkingCode, setCheckingCode] = useState(false);
   const [savingWallet, setSavingWallet] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   // tiny inline spinner (no layout changes)
   const Spinner = ({ size = 14, stroke = 2 }) => {
     const s = `${size}px`;
     const r = (size - stroke) / 2;
     return (
-      <svg
-        width={s}
-        height={s}
-        viewBox={`0 0 ${size} ${size}`}
-        aria-label="Loading"
-        style={{ marginRight: 8 }}
-      >
+      <svg width={s} height={s} viewBox={`0 0 ${size} ${size}`} aria-label="Loading" style={{ marginRight: 8 }}>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth={stroke}/>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round"
                 strokeDasharray={`${Math.PI*r*1.2} ${Math.PI*r*2}`}
@@ -67,7 +62,7 @@ export default function Home() {
       }
       setTier(j.tier || "Early Access");
       setStep("wallet");
-    } catch (err) {
+    } catch {
       alert("Network error. Please try again.");
     } finally {
       setCheckingCode(false);
@@ -91,10 +86,35 @@ export default function Home() {
       }
       setClaimId(j.id);
       setStep("link-x"); // force Twitter link to complete registration
-    } catch (err) {
+    } catch {
       alert("Network error. Please try again.");
     } finally {
       setSavingWallet(false);
+    }
+  }
+
+  // NEW: resume flow for used codes (does not change original steps)
+  async function resumeLinking(e) {
+    e.preventDefault();
+    if (resuming) return;
+    setResuming(true);
+    try {
+      const r = await fetch("/api/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, wallet }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        alert(j.error || "Could not resume. Check code and wallet are the same as your original claim.");
+        return;
+      }
+      // Jump straight into your existing OAuth
+      window.location.href = j.url; // /api/x/start?mode=link&claim=...
+    } catch {
+      alert("Network error. Please try again.");
+    } finally {
+      setResuming(false);
     }
   }
 
@@ -157,20 +177,45 @@ export default function Home() {
         </p>
 
         {step === "code" && (
-          <form onSubmit={checkCode}>
-            <label>Access code</label>
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-              style={inputStyle}
-              placeholder="Enter your code"
-            />
-            <button type="submit" style={checkingCode ? buttonDisabledStyle : buttonStyle} disabled={checkingCode}>
-              {checkingCode && <Spinner />}
-              {checkingCode ? "Checking…" : "Continue"}
-            </button>
-          </form>
+          <>
+            <form onSubmit={checkCode}>
+              <label>Access code</label>
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+                style={inputStyle}
+                placeholder="Enter your code"
+              />
+              <button type="submit" style={checkingCode ? buttonDisabledStyle : buttonStyle} disabled={checkingCode}>
+                {checkingCode && <Spinner />}
+                {checkingCode ? "Checking…" : "Continue"}
+              </button>
+            </form>
+
+            {/* Resume block for people with used codes */}
+            <div style={{ marginTop: 18, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <p style={{ margin: "0 0 8px", opacity: 0.9 }}>
+                Already claimed but didn’t link Twitter?
+              </p>
+              <form onSubmit={resumeLinking} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12 }}>
+                <input
+                  value={wallet}
+                  onChange={(e) => setWallet(e.target.value)}
+                  required
+                  style={inputStyle}
+                  placeholder="Enter the same wallet you used"
+                />
+                <button type="submit" style={resuming ? buttonDisabledStyle : buttonStyle} disabled={resuming}>
+                  {resuming && <Spinner />}
+                  {resuming ? "Resuming…" : "Resume linking"}
+                </button>
+              </form>
+              <p style={{ marginTop: 8, opacity: 0.8, fontSize: 14 }}>
+                We’ll verify your code and wallet, then send you to Twitter to finish linking.
+              </p>
+            </div>
+          </>
         )}
 
         {step === "wallet" && (
