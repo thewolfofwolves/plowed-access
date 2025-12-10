@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../lib/supa";   // <-- change this line
 import bs58 from "bs58";
 import crypto from "crypto";
+
 
 function isSol(addr) {
   try {

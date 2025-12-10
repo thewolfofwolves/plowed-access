@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";   // was "@/lib/supa"
 
 function b64url(buf){
   return Buffer.from(buf).toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");

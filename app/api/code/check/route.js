@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";   // <-- change this line
+
 
 export async function POST(req){
   try{

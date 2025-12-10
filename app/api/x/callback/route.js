@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";   // was "@/lib/supa"
 
 const BUILD_TAG = "cb-2025-10-05c"; // watch for this in Response Headers
 

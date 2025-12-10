@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";   // was "@/lib/supa"
 
 const APP_SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret";
 

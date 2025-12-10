@@ -1,8 +1,8 @@
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
+import { NextResponse } from "next/server";
+import crypto from "crypto";
 import * as nacl from "tweetnacl";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";   // <-- change this line
+
 
 /* ---------- small utils ---------- */
 function hexToUint8Array(hex) {

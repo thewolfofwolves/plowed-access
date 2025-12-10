@@ -1,7 +1,7 @@
 // app/api/resume/route.js
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../lib/supa";   // was "@/lib/supa"
 
 /** Normalise code the same way as your check flow */
 function normaliseCode(s = "") {
