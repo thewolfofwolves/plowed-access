@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../../lib/supa";
 import bs58 from "bs58";
 
-function isSol(addr) {
-  try { return bs58.decode(addr.trim()).length === 32; } catch { return false; }
-}
+function isSol(addr){ try{return bs58.decode(addr.trim()).length===32;}catch{return false;} }
+
 
 export async function PATCH(req) {
   try {

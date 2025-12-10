@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../lib/supa";
 import bs58 from "bs58";
 import crypto from "crypto";
 

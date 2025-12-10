@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";
 
 export async function GET(req){
   try{

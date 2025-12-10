@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";
+
 
 export async function GET(req) {
   const APP_BASE_URL = process.env.APP_BASE_URL;

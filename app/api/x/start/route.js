@@ -3,8 +3,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { supaAdmin } from "../../../../lib/supa";
+
 import crypto from "crypto";
-import { supaAdmin } from "@/lib/supa";
+
 
 function base64url(input) {
   return Buffer.from(input)

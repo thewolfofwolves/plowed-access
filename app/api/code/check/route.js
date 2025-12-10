@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";
 
 export async function POST(req){
   try{
-    const { code } = await req.json();
-    if(!code) return NextResponse.json({error:"Missing code"},{status:400});
+    const { code, secret } = await req.json();
+    if(!code||!secret) return NextResponse.json({error:"Missing inputs"},{status:400});
+
     const supa=supaAdmin();
-    const { data, error } = await supa.from("codes")
-      .select("id,code_hash,tier,expires_at,used_at").is("used_at",null);
-    if(error) throw error;
-    const now=new Date();
-    const hit=data?.find(r=>(!r.expires_at||new Date(r.expires_at)>now)&&bcrypt.compareSync(code.trim(),r.code_hash));
-    if(!hit) return NextResponse.json({error:"Invalid or used code"},{status:400});
-    return NextResponse.json({tier:hit.tier});
-  }catch(e){ return NextResponse.json({error:e.message||"Server error"},{status:500}); }
+    const { data, error } = await supa
+      .from("codes")
+      .select("id,secret_hash,used_at")
+      .eq("code",code)
+      .maybeSingle();
+
+    if(error) return NextResponse.json({error:error.message},{status:400});
+    if(!data) return NextResponse.json({error:"Invalid code"},{status:404});
+    if(data.used_at) return NextResponse.json({error:"Code already used"},{status:400});
+
+    const ok = await bcrypt.compare(secret, data.secret_hash);
+    if(!ok) return NextResponse.json({error:"Invalid secret"},{status:401});
+
+    return NextResponse.json({ok:true});
+  }catch(e){
+    return NextResponse.json({error:e.message || "Server error"},{status:500});
+  }
 }

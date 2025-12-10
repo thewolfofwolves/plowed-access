@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import * as nacl from "tweetnacl";
-import { supaAdmin } from "@/lib/supa";
+import { supaAdmin } from "../../../../lib/supa";
 
 /* ---------- helpers ---------- */
 function hexToUint8Array(hex) {
